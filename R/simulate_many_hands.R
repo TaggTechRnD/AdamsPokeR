@@ -12,14 +12,15 @@ simulate_many_hands <- function(n_sim = 100, n_players = 2, focus_player = NULL,
   if (!is.null(seed)) set.seed(seed)
 
   sims <- vector("list", n_sim)
+  cat("\n")
 
   for (i in seq_len(n_sim)) {
-    cat("\nSim", i, "of", n_sim)
+    if (i %% 50 == 0) cat(i, "|")
     res <- simulate_holdem_hand(n_players)
     res$sim_id <- i
     sims[[i]] <- res
   }
-
+  cat("\n", n_sim, "sims complete.")
   out <- dplyr::bind_rows(sims)
 
   if (is.null(focus_player)) {
