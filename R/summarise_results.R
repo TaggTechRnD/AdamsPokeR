@@ -7,11 +7,14 @@
 summarise_results <- function(sim_data) {
 
   sim_data |>
-    dplyr::group_by(player) |>
     dplyr::summarise(
+      total_hands = dplyr::n(),
       wins = sum(winner),
-      total = dplyr::n(),
-      win_rate = wins / total,
-      .groups = "drop"
+      win_rate = wins / total_hands,
+
+      avg_preflop = mean(preflop_value),
+      avg_flop = mean(flop_rank),
+      avg_turn = mean(turn_rank),
+      avg_river = mean(river_rank)
     )
 }
