@@ -39,12 +39,23 @@ apply_decision_table <- function(sim_data, decision_table) {
 
       # If 0 or 1 players remain, no more decisions needed
       if (remaining <= 1) {
+
+        # Assign decisions explicitly for all players
+        for (j in seq_along(idx)) {
+
+          if (active_players[j]) {
+            decision <- "call"
+          } else {
+            decision <- "fold"
+          }
+
+          sim_data[[paste0("decision_", stage)]][idx[j]] <- decision
+        }
+
         next
       }
 
       for (j in seq_along(idx)) {
-
-        if (!active_players[j]) next
 
         row <- sim_data[idx[j], ]
         data_list <- as.list(row)
@@ -52,15 +63,22 @@ apply_decision_table <- function(sim_data, decision_table) {
 
         rules <- decision_table[decision_table$stage == stage, ]
 
-        decision <- NA_character_
+        if (active_players[j]) {
 
-        if (evaluate_rule(rules$fold, data_list)) {
-          decision <- "fold"
-          active_players[j] <- FALSE
-        } else if (evaluate_rule(rules$call, data_list)) {
           decision <- "call"
-        } else if (evaluate_rule(rules$raise, data_list)) {
-          decision <- "raise"
+
+          if (evaluate_rule(rules$fold, data_list)) {
+            decision <- "fold"
+            active_players[j] <- FALSE
+          } else if (evaluate_rule(rules$raise, data_list)) {
+            decision <- "raise"
+          } else if (evaluate_rule(rules$call, data_list)) {
+            decision <- "call"
+          }
+
+        } else {
+          # already folded players must STILL get decisions
+          decision <- "fold"
         }
 
         sim_data[[paste0("decision_", stage)]][idx[j]] <- decision

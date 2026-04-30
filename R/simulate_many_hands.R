@@ -22,11 +22,11 @@ simulate_many_hands <- function(n_sim = 100, n_players = 2, focus_player = NULL,
 
   out <- dplyr::bind_rows(sims)
 
-  if (!is.null(focus_player)) {
-    out <- dplyr::mutate(out, is_focus = player == focus_player)
-  } else {
-    out$is_focus <- TRUE
+  if (is.null(focus_player)) {
+    focus_player <- 1
   }
+
+  out <- dplyr::mutate(out, is_focus = player == focus_player)
 
   out
 }
