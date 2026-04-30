@@ -15,8 +15,17 @@ evaluate_hand <- function(cards) {
 
   # Count ranks
   rank_counts <- table(ranks)
-  count_values <- sort(as.integer(rank_counts), decreasing = TRUE)
-  unique_ranks <- sort(as.integer(names(rank_counts)), decreasing = TRUE)
+
+  # Sort by frequency first, then by rank
+  rank_df <- data.frame(
+    rank = as.integer(names(rank_counts)),
+    count = as.integer(rank_counts)
+  )
+
+  rank_df <- rank_df[order(-rank_df$count, -rank_df$rank), ]
+
+  count_values <- rank_df$count
+  ordered_ranks <- rank_df$rank
 
   # Flush check
   is_flush <- length(unique(suits)) == 1
@@ -34,7 +43,7 @@ evaluate_hand <- function(cards) {
     }
   }
 
-  top_rank <- unique_ranks[1]
+  top_rank <- ordered_ranks[1]
 
   # Determine hand type
   if (is_straight && is_flush && top_rank == 14) {
@@ -45,34 +54,42 @@ evaluate_hand <- function(cards) {
     rank_class <- "straight_flush"
     rank_value <- 9
     tiebreaker <- ranks
+
   } else if (count_values[1] == 4) {
     rank_class <- "four_of_a_kind"
     rank_value <- 8
-    tiebreaker <- c(unique_ranks[rank_counts == 4], unique_ranks[rank_counts == 1])
-  } else if (all(count_values == c(3,2))) {
+    tiebreaker <- ordered_ranks
+
+  } else if (identical(count_values, c(3L, 2L))) {
     rank_class <- "full_house"
     rank_value <- 7
-    tiebreaker <- unique_ranks
+    tiebreaker <- ordered_ranks
+
   } else if (is_flush) {
     rank_class <- "flush"
     rank_value <- 6
     tiebreaker <- ranks
+
   } else if (is_straight) {
     rank_class <- "straight"
     rank_value <- 5
     tiebreaker <- ranks
+
   } else if (count_values[1] == 3) {
     rank_class <- "three_of_a_kind"
     rank_value <- 4
-    tiebreaker <- c(unique_ranks[rank_counts == 3], unique_ranks[rank_counts == 1])
-  } else if (all(count_values == c(2,2,1))) {
+    tiebreaker <- ordered_ranks
+
+  } else if (identical(count_values, c(2L, 2L, 1L))) {
     rank_class <- "two_pair"
     rank_value <- 3
-    tiebreaker <- unique_ranks
+    tiebreaker <- ordered_ranks
+
   } else if (count_values[1] == 2) {
     rank_class <- "pair"
     rank_value <- 2
-    tiebreaker <- c(unique_ranks[rank_counts == 2], unique_ranks[rank_counts == 1])
+    tiebreaker <- ordered_ranks
+
   } else {
     rank_class <- "high_card"
     rank_value <- 1
