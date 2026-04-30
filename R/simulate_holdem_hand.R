@@ -1,17 +1,14 @@
-#' Simulate a single Texas Hold'em hand
+#' Simulate a single Texas Hold'em hand with state tracking
 #'
-#' @param n_players Number of players (2–10 recommended)
+#' @param n_players Number of players
 #' @param seed Optional seed
 #'
-#' @return Tibble with player results
+#' @return Tibble with full hand state per player
 #' @export
 simulate_holdem_hand <- function(n_players = 2, seed = NULL) {
 
   if (!is.null(seed)) set.seed(seed)
-
-  if (n_players < 2) {
-    stop("Need at least 2 players")
-  }
+  if (n_players < 2) stop("Need at least 2 players")
 
   deck <- shuffle_deck(create_deck())
 
@@ -24,7 +21,7 @@ simulate_holdem_hand <- function(n_players = 2, seed = NULL) {
     deck <- dealt$remaining_deck
   }
 
-  # Deal community cards
+  # Deal board stepwise
   flop <- deal_cards(deck, 3)
   deck <- flop$remaining_deck
 
@@ -32,27 +29,57 @@ simulate_holdem_hand <- function(n_players = 2, seed = NULL) {
   deck <- turn$remaining_deck
 
   river <- deal_cards(deck, 1)
-  board <- rbind(flop$hand, turn$hand, river$hand)
 
-  # Evaluate each player
+  board_flop <- flop$hand
+  board_turn <- rbind(board_flop, turn$hand)
+  board_river <- rbind(board_turn, river$hand)
+
+  # Evaluate each stage
   results <- lapply(seq_len(n_players), function(i) {
-    full_hand <- rbind(players[[i]], board)
-    best <- best_5_from_7(full_hand)
+
+    hole <- players[[i]]
+
+    # Pre-flop score proxy (simple)
+    pre_value <- sum(hole$rank)
+
+    # Flop
+    flop_eval <- best_hand(rbind(hole, board_flop, hole[1,])) # pad to 7
+
+    # Turn
+    turn_eval <- best_hand(rbind(hole, board_turn))
+
+    # River
+    river_eval <- best_hand(rbind(hole, board_river))
 
     tibble::tibble(
       player = i,
-      rank_class = best$rank_class,
-      rank_value = best$rank_value,
-      tiebreaker = list(best$tiebreaker)
+
+      hole_cards = list(hole),
+
+      board_flop = list(board_flop),
+      board_turn = list(board_turn),
+      board_river = list(board_river),
+
+      preflop_value = pre_value,
+
+      flop_rank = flop_eval$rank_value,
+      turn_rank = turn_eval$rank_value,
+      river_rank = river_eval$rank_value,
+
+      final_eval = list(river_eval)
     )
   })
 
   results <- dplyr::bind_rows(results)
 
-  # Determine winner
+  # Determine winner using final_eval
   best_idx <- 1
+
   for (i in 2:n_players) {
-    cmp <- compare_hands_from_eval(results[i, ], results[best_idx, ])
+    cmp <- compare_hands_from_eval(
+      results$final_eval[[i]],
+      results$final_eval[[best_idx]]
+    )
     if (cmp == 1) best_idx <- i
   }
 
