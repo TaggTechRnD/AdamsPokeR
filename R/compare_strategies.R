@@ -5,6 +5,7 @@ compare_strategies <- function(sim, strategy_list) {
     dt <- strategy_list[[name]]
 
     res <- sim %>%
+      assign_positions() %>%
       apply_decision_table(dt) %>%
       compute_investment() %>%
       classify_outcomes() %>%

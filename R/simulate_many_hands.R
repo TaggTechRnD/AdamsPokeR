@@ -12,7 +12,7 @@ simulate_many_hands <- function(n_sim = 100, n_players = 2, focus_player = NULL,
   if (!is.null(seed)) set.seed(seed)
 
   sims <- vector("list", n_sim)
-  cat("\n")
+  cat("\nSimulating", n_sim, "hands:")
 
   for (i in seq_len(n_sim)) {
     if (i %% 50 == 0) cat(i, "|")
