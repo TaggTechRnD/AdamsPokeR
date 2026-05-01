@@ -11,6 +11,7 @@ test_that("EV is calculated", {
 
   res <- sim %>%
     apply_decision_table(dt) %>%
+    compute_investment() %>%
     classify_outcomes() %>%
     calculate_ev()
 
