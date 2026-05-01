@@ -6,6 +6,9 @@ compare_strategies <- function(sim, strategy_list) {
 
     res <- sim %>%
       assign_positions() %>%
+      assign_player_types() %>%
+      add_type_modifiers() %>%
+      add_adjusted_metrics() %>%
       apply_decision_table(dt) %>%
       compute_investment() %>%
       classify_outcomes() %>%

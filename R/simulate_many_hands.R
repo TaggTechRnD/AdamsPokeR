@@ -10,7 +10,7 @@
 simulate_many_hands <- function(n_sim = 100, n_players = 2, focus_player = NULL, seed = NULL) {
 
   if (!is.null(seed)) set.seed(seed)
-
+  cat("Beginning simulation at", as.POSIXct(Sys.time()), "\n")
   sims <- vector("list", n_sim)
   cat("\nSimulating", n_sim, "hands:")
 
@@ -28,6 +28,6 @@ simulate_many_hands <- function(n_sim = 100, n_players = 2, focus_player = NULL,
   }
 
   out <- dplyr::mutate(out, is_focus = player == focus_player)
-
+  cat("\nFinishing simulation at", as.POSIXct(Sys.time()), "\n")
   out
 }
