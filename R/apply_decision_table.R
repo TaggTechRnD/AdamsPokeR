@@ -5,6 +5,7 @@
 #'
 #' @return sim_data with decisions and remaining player tracking
 #' @export
+
 apply_decision_table <- function(sim_data, decision_table) {
 
   stages <- c("preflop", "flop", "turn", "river")
@@ -33,6 +34,9 @@ apply_decision_table <- function(sim_data, decision_table) {
 
     for (stage in stages) {
 
+      # --- NEW: reset table pressure for this stage ---
+      stage_raises <- 0
+
       # ✅ ALWAYS compute and store remaining players
       remaining <- sum(active_players)
       sim_data[[paste0("remaining_", stage)]][idx] <- remaining
@@ -40,7 +44,6 @@ apply_decision_table <- function(sim_data, decision_table) {
       # If 0 or 1 players remain, no more decisions needed
       if (remaining <= 1) {
 
-        # Assign decisions explicitly for all players
         for (j in seq_along(idx)) {
 
           if (active_players[j]) {
@@ -59,7 +62,10 @@ apply_decision_table <- function(sim_data, decision_table) {
 
         row <- sim_data[idx[j], ]
         data_list <- as.list(row)
+
+        # --- UPDATED: inject interaction variables ---
         data_list$remaining_players <- remaining
+        data_list$stage_raises <- stage_raises
 
         rules <- decision_table[decision_table$stage == stage, ]
 
@@ -70,18 +76,25 @@ apply_decision_table <- function(sim_data, decision_table) {
           if (evaluate_rule(rules$fold, data_list)) {
             decision <- "fold"
             active_players[j] <- FALSE
+
           } else if (evaluate_rule(rules$raise, data_list)) {
             decision <- "raise"
+
           } else if (evaluate_rule(rules$call, data_list)) {
             decision <- "call"
           }
 
         } else {
-          # already folded players must STILL get decisions
           decision <- "fold"
         }
 
+        # --- WRITE DECISION ---
         sim_data[[paste0("decision_", stage)]][idx[j]] <- decision
+
+        # --- NEW: update table pressure AFTER decision ---
+        if (decision == "raise") {
+          stage_raises <- stage_raises + 1
+        }
       }
     }
 
