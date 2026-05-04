@@ -19,3 +19,13 @@
 "dt_positional"
 
 "example_strategies"
+
+#' Rival Poker Strategies
+#'
+#' Baseline opponent decision tables for simulation environments.
+#'
+#' @format A list of tibbles:
+#' \describe{
+#'   \item{baseline}{Pressure-aware baseline opponent}
+#' }
+"rival_strategies"

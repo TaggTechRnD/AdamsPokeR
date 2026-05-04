@@ -9,7 +9,20 @@ calculate_ev <- function(sim_data) {
   pot_table <- sim_data %>%
     dplyr::group_by(sim_id) %>%
     dplyr::summarise(
-      pot = sum(invested, na.rm = TRUE),
+
+      n_players = dplyr::n(),
+
+      n_turn_players = sum(active_turn, na.rm = TRUE),
+      n_river_players = sum(active_river, na.rm = TRUE),
+
+      effective_players = pmax(n_turn_players, n_river_players, 1),
+
+      total_invested = sum(invested, na.rm = TRUE),
+
+      # Revised pot estimate:
+      # scale pot by meaningful late-stage participation
+      pot = total_invested * (effective_players / n_players),
+
       .groups = "drop"
     )
 

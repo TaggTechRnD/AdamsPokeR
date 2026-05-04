@@ -10,7 +10,10 @@ compare_strategies <- function(sim, strategy_list) {
   for (i in seq_along(strategy_names)) {
 
     name <- strategy_names[i]
-    dt <- strategy_list[[name]]
+
+    # 🔥 KEY CHANGE: separate focus vs rivals
+    dt_focus <- strategy_list[[name]]
+    dt_rival <- rival_strategies[["baseline"]]   # fixed rival environment
 
     cat("\n----------------------------------------\n")
     cat("Running strategy", i, "of", n_strat, ":", name, "\n")
@@ -21,12 +24,18 @@ compare_strategies <- function(sim, strategy_list) {
       assign_positions() %>%
       assign_player_types() %>%
       add_type_modifiers() %>%
-      apply_decision_table(dt) %>%
+
+      # 🔥 PASS 1
+      apply_decision_table(dt_focus, dt_rival) %>%
+
       add_adjusted_metrics() %>%
       compute_investment() %>%
       add_adjusted_metrics() %>%
-      apply_decision_table(dt) %>%
+
+      # 🔥 PASS 2
+      apply_decision_table(dt_focus, dt_rival) %>%
       compute_investment() %>%
+
       classify_outcomes() %>%
       calculate_ev()
 
@@ -54,22 +63,18 @@ compare_strategies <- function(sim, strategy_list) {
       dplyr::filter(is_focus) %>%
       dplyr::summarise(
 
-        # Showdown behavior
         showdown_rate = mean(win_type == "showdown_win"),
         fold_rate     = mean(grepl("fold_win", win_type)),
 
-        # Stage-specific fold tendencies
         fold_preflop_rate = mean(win_type == "fold_win_preflop"),
         fold_flop_rate    = mean(win_type == "fold_win_flop"),
         fold_turn_rate    = mean(win_type == "fold_win_turn"),
         fold_river_rate   = mean(win_type == "fold_win_river"),
 
-        # Economic sanity
         avg_invested = mean(invested, na.rm = TRUE),
         avg_loss     = mean(ev[ev < 0], na.rm = TRUE),
         avg_win      = mean(ev[ev > 0], na.rm = TRUE),
 
-        # Risk profile
         loss_rate = mean(win_type == "loss")
       )
 
@@ -88,11 +93,10 @@ compare_strategies <- function(sim, strategy_list) {
     total_time <- Sys.time() - start_time
 
     cat("Completed:", name, "\n")
-    cat("Iteration time:", round(iter_time, 2), "minutes\n")
-    cat("Total elapsed:", round(total_time, 2), "minutes\n")
+    cat("Iteration start time:", as.character(Sys.time()), "\n")
   }
 
-  cat("\nAll strategies complete.\n")
+  cat("\nAll strategies complete at.", as.character(Sys.time()), "\n")
 
   dplyr::bind_rows(results) %>%
     dplyr::select(strategy, dplyr::everything())

@@ -6,7 +6,11 @@
 #' @return sim_data with decisions and remaining player tracking
 #' @export
 
-apply_decision_table <- function(sim_data, decision_table) {
+apply_decision_table <- function(sim_data, dt_focus, dt_rival = NULL) {
+
+  if (is.null(dt_rival)) {
+    dt_rival <- dt_focus
+  }
 
   stages <- c("preflop", "flop", "turn", "river")
 
@@ -21,7 +25,6 @@ apply_decision_table <- function(sim_data, decision_table) {
       remaining_flop = NA_integer_,
       remaining_turn = NA_integer_,
       remaining_river = NA_integer_,
-
       betlevel_preflop = NA_real_,
       betlevel_flop    = NA_real_,
       betlevel_turn    = NA_real_,
@@ -40,23 +43,25 @@ apply_decision_table <- function(sim_data, decision_table) {
       stage_raises <- 0
       current_bet_level <- 1
 
-      remaining <- sum(active_players)
-      sim_data[[paste0("remaining_", stage)]][idx] <- remaining
-
-      if (remaining <= 1) {
+      if (sum(active_players) <= 1) {
 
         for (j in seq_along(idx)) {
 
           decision <- ifelse(active_players[j], "call", "fold")
 
+          sim_data[[paste0("remaining_", stage)]][idx[j]] <- sum(active_players)
           sim_data[[paste0("decision_", stage)]][idx[j]] <- decision
           sim_data[[paste0("betlevel_", stage)]][idx[j]] <- current_bet_level
+          sim_data$active[idx[j]] <- active_players[j]
         }
 
         next
       }
 
       for (j in seq_along(idx)) {
+
+        remaining <- sum(active_players)
+        sim_data[[paste0("remaining_", stage)]][idx[j]] <- remaining
 
         row <- sim_data[idx[j], ]
         data_list <- as.list(row)
@@ -81,73 +86,87 @@ apply_decision_table <- function(sim_data, decision_table) {
         }
 
         data_list$remaining_players <- remaining
-        data_list$stage_raises      <- stage_raises
         data_list$current_bet_level <- current_bet_level
 
-        data_list$n_active_before   <- n_active_before
-        data_list$n_folded_before   <- n_folded_before
-        data_list$n_called_before   <- n_called_before
-        data_list$n_raised_before   <- n_raised_before
-        data_list$n_to_act_after    <- n_to_act_after
-
-        rules <- decision_table[decision_table$stage == stage, ]
+        # Strategy selection
+        player_id <- sim_data$player[idx[j]]
+        if (player_id == 1) {
+          rules <- dt_focus[dt_focus$stage == stage, ]
+        } else {
+          rules <- dt_rival[dt_rival$stage == stage, ]
+        }
 
         # --- DECISION LOGIC ---
         if (active_players[j]) {
 
           decision <- "call"
 
-          # 1. Rule-based decisions first
+          # --- RULES FIRST ---
           if (evaluate_rule(rules$fold, data_list)) {
 
-            decision <- "fold"
-            active_players[j] <- FALSE
+            if (remaining > 1) {
+              decision <- "fold"
+              active_players[j] <- FALSE
+              sim_data$active[idx[j]] <- FALSE
+            }
 
           } else if (evaluate_rule(rules$raise, data_list)) {
 
             decision <- "raise"
             current_bet_level <- current_bet_level + 1
 
-          } else if (evaluate_rule(rules$call, data_list)) {
-
-            decision <- "call"
-
           } else {
 
-            # 2. NEW: PRESSURE-BASED FALLBACK
+            # --- NEW PRESSURE ENGINE ---
 
             strength <- data_list[[paste0("adj_", stage)]]
+            if (is.null(strength) || is.na(strength)) strength <- 0
 
-            if (is.null(strength) || is.na(strength)) {
-              strength <- 0
-            }
+            # 🔴 CRITICAL: normalize strength
+            relative_strength <- strength / max(remaining, 1)
 
-            if (current_bet_level >= 3 && strength < 2.5) {
-
-              decision <- "fold"
-              active_players[j] <- FALSE
-
-            } else if (current_bet_level >= 2 && strength < 1.5) {
+            # --- HARD FOLD RULES ---
+            if (current_bet_level >= 4 && relative_strength < 1.5) {
 
               decision <- "fold"
               active_players[j] <- FALSE
+              sim_data$active[idx[j]] <- FALSE
+
+            } else if (current_bet_level >= 3 && relative_strength < 2.0) {
+
+              decision <- "fold"
+              active_players[j] <- FALSE
+              sim_data$active[idx[j]] <- FALSE
+
+            } else if (current_bet_level >= 2 && relative_strength < 2.5) {
+
+              decision <- "fold"
+              active_players[j] <- FALSE
+              sim_data$active[idx[j]] <- FALSE
 
             } else {
 
-              decision <- "call"
+              # --- CONTROLLED CALL ---
+              call_prob <- min(1, relative_strength / 3)
+
+              if (runif(1) < call_prob) {
+                decision <- "call"
+              } else {
+                decision <- "fold"
+                active_players[j] <- FALSE
+                sim_data$active[idx[j]] <- FALSE
+              }
             }
           }
 
         } else {
           decision <- "fold"
+          sim_data$active[idx[j]] <- FALSE
         }
 
-        # safety
         if (is.na(decision)) decision <- "fold"
 
         sim_data[[paste0("decision_", stage)]][idx[j]] <- decision
-
-        # persist bet level
         sim_data[[paste0("betlevel_", stage)]][idx[j]] <- current_bet_level
 
         if (decision == "raise") {
@@ -159,7 +178,7 @@ apply_decision_table <- function(sim_data, decision_table) {
     # --- WINNER LOGIC ---
     final_idx <- idx[active_players]
 
-    if (length(final_idx) > 0) {
+    if (length(final_idx) >= 1) {
 
       best_idx <- final_idx[1]
 
@@ -173,6 +192,10 @@ apply_decision_table <- function(sim_data, decision_table) {
 
       sim_data$winner[idx] <- FALSE
       sim_data$winner[best_idx] <- TRUE
+
+    } else {
+      sim_data$winner[idx] <- FALSE
+      sim_data$winner[idx[1]] <- TRUE
     }
   }
 
