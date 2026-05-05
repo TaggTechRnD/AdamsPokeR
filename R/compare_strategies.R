@@ -13,7 +13,7 @@ compare_strategies <- function(sim, strategy_list) {
 
     # 🔥 KEY CHANGE: separate focus vs rivals
     dt_focus <- strategy_list[[name]]
-    dt_rival <- rival_strategies[["baseline"]]   # fixed rival environment
+    dt_rival <- rival_strategies[["baseline"]]
 
     cat("\n----------------------------------------\n")
     cat("Running strategy", i, "of", n_strat, ":", name, "\n")
@@ -39,26 +39,59 @@ compare_strategies <- function(sim, strategy_list) {
       classify_outcomes() %>%
       calculate_ev()
 
-    # -------------------------------
+    # -----------------------------------
+    # BEST HAND BUT FOLDED (FIXED)
+    # -----------------------------------
+    best_hand_folded <- res %>%
+      dplyr::group_by(sim_id) %>%
+      dplyr::mutate(
+        best_value = max(sapply(final_eval, function(x) x$rank_value))
+      ) %>%
+      dplyr::ungroup() %>%
+      dplyr::filter(is_focus) %>%
+      dplyr::mutate(
+        my_value = sapply(final_eval, function(x) x$rank_value),
+        best_in_hand = my_value == best_value
+      ) %>%
+      dplyr::summarise(
+        best_hand_folded = sum(best_in_hand & final_action == "fold", na.rm = TRUE)
+      )
+
+    # -----------------------------------
+    # FOLD FORCES (FIXED)
+    # -----------------------------------
+    fold_forces <- res %>%
+      dplyr::filter(!is_focus) %>%
+      dplyr::summarise(
+        fold_forces = sum(
+          decision_flop == "fold" & betlevel_flop > 1 |
+            decision_turn == "fold" & betlevel_turn > 1 |
+            decision_river == "fold" & betlevel_river > 1,
+          na.rm = TRUE
+        )
+      )
+
+    # -----------------------------------
     # CORE SUMMARY
-    # -------------------------------
+    # -----------------------------------
     summary <- summarise_ev(res)
 
-    # -------------------------------
+    # -----------------------------------
     # WIN TYPE COUNTS
-    # -------------------------------
+    # -----------------------------------
     win_counts <- res %>%
       dplyr::filter(is_focus) %>%
       dplyr::count(win_type) %>%
+      tidyr::complete(win_type, fill = list(n = 0)) %>%
       tidyr::pivot_wider(
         names_from = win_type,
         values_from = n,
         values_fill = 0
       )
 
-    # -------------------------------
+    # -----------------------------------
     # DIAGNOSTICS
-    # -------------------------------
+    # -----------------------------------
     diagnostics <- res %>%
       dplyr::filter(is_focus) %>%
       dplyr::summarise(
@@ -78,12 +111,14 @@ compare_strategies <- function(sim, strategy_list) {
         loss_rate = mean(win_type == "loss")
       )
 
-    # -------------------------------
+    # -----------------------------------
     # COMBINE
-    # -------------------------------
+    # -----------------------------------
     summary <- summary %>%
       dplyr::bind_cols(win_counts) %>%
-      dplyr::bind_cols(diagnostics)
+      dplyr::bind_cols(diagnostics) %>%
+      dplyr::bind_cols(best_hand_folded) %>%
+      dplyr::bind_cols(fold_forces)
 
     summary$strategy <- name
 

@@ -4,7 +4,7 @@
 \alias{apply_decision_table}
 \title{Apply decision table to simulation data with dropout tracking}
 \usage{
-apply_decision_table(sim_data, decision_table)
+apply_decision_table(sim_data, dt_focus, dt_rival = NULL)
 }
 \arguments{
 \item{sim_data}{Output from simulate_many_hands}

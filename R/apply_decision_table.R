@@ -40,9 +40,9 @@ apply_decision_table <- function(sim_data, dt_focus, dt_rival = NULL) {
 
     for (stage in stages) {
 
-      stage_raises <- 0
       current_bet_level <- 1
 
+      # If only one player remains → auto resolve
       if (sum(active_players) <= 1) {
 
         for (j in seq_along(idx)) {
@@ -70,25 +70,17 @@ apply_decision_table <- function(sim_data, dt_focus, dt_rival = NULL) {
         if (j == 1) {
           n_active_before <- 0
           n_to_act_after  <- sum(active_players) - 1
-          n_folded_before <- 0
-          n_called_before <- 0
-          n_raised_before <- 0
         } else {
           n_active_before <- sum(active_players[1:(j-1)])
           n_to_act_after  <- sum(active_players) - n_active_before - 1
-
-          decision_col <- paste0("decision_", stage)
-          decisions_so_far <- sim_data[[decision_col]][idx][1:(j-1)]
-
-          n_folded_before <- sum(decisions_so_far == "fold", na.rm = TRUE)
-          n_called_before <- sum(decisions_so_far == "call", na.rm = TRUE)
-          n_raised_before <- sum(decisions_so_far == "raise", na.rm = TRUE)
         }
 
         data_list$remaining_players <- remaining
         data_list$current_bet_level <- current_bet_level
+        data_list$n_active_before <- n_active_before
+        data_list$n_to_act_after  <- n_to_act_after
 
-        # Strategy selection
+        # --- STRATEGY SELECTION ---
         player_id <- sim_data$player[idx[j]]
         if (player_id == 1) {
           rules <- dt_focus[dt_focus$stage == stage, ]
@@ -96,12 +88,12 @@ apply_decision_table <- function(sim_data, dt_focus, dt_rival = NULL) {
           rules <- dt_rival[dt_rival$stage == stage, ]
         }
 
-        # --- DECISION LOGIC ---
+        # --- DECISION ENGINE (PURE RULE-BASED) ---
         if (active_players[j]) {
 
-          decision <- "call"
+          decision <- NA_character_
 
-          # --- RULES FIRST ---
+          # Priority: fold → raise → call
           if (evaluate_rule(rules$fold, data_list)) {
 
             if (remaining > 1) {
@@ -115,51 +107,18 @@ apply_decision_table <- function(sim_data, dt_focus, dt_rival = NULL) {
             decision <- "raise"
             current_bet_level <- current_bet_level + 1
 
+          } else if (evaluate_rule(rules$call, data_list)) {
+
+            decision <- "call"
+
           } else {
 
-            # --- NEW PRESSURE ENGINE ---
-
-            strength <- data_list[[paste0("adj_", stage)]]
-            if (is.null(strength) || is.na(strength)) strength <- 0
-
-            # 🔴 CRITICAL: normalize strength
-            relative_strength <- strength / max(remaining, 1)
-
-            # --- HARD FOLD RULES ---
-            if (current_bet_level >= 4 && relative_strength < 1.5) {
-
-              decision <- "fold"
-              active_players[j] <- FALSE
-              sim_data$active[idx[j]] <- FALSE
-
-            } else if (current_bet_level >= 3 && relative_strength < 2.0) {
-
-              decision <- "fold"
-              active_players[j] <- FALSE
-              sim_data$active[idx[j]] <- FALSE
-
-            } else if (current_bet_level >= 2 && relative_strength < 2.5) {
-
-              decision <- "fold"
-              active_players[j] <- FALSE
-              sim_data$active[idx[j]] <- FALSE
-
-            } else {
-
-              # --- CONTROLLED CALL ---
-              call_prob <- min(1, relative_strength / 3)
-
-              if (runif(1) < call_prob) {
-                decision <- "call"
-              } else {
-                decision <- "fold"
-                active_players[j] <- FALSE
-                sim_data$active[idx[j]] <- FALSE
-              }
-            }
+            # 🔑 deterministic fallback (engine-safe)
+            decision <- "call"
           }
 
         } else {
+
           decision <- "fold"
           sim_data$active[idx[j]] <- FALSE
         }
@@ -168,14 +127,10 @@ apply_decision_table <- function(sim_data, dt_focus, dt_rival = NULL) {
 
         sim_data[[paste0("decision_", stage)]][idx[j]] <- decision
         sim_data[[paste0("betlevel_", stage)]][idx[j]] <- current_bet_level
-
-        if (decision == "raise") {
-          stage_raises <- stage_raises + 1
-        }
       }
     }
 
-    # --- WINNER LOGIC ---
+    # --- WINNER RESOLUTION ---
     final_idx <- idx[active_players]
 
     if (length(final_idx) >= 1) {
@@ -194,6 +149,7 @@ apply_decision_table <- function(sim_data, dt_focus, dt_rival = NULL) {
       sim_data$winner[best_idx] <- TRUE
 
     } else {
+
       sim_data$winner[idx] <- FALSE
       sim_data$winner[idx[1]] <- TRUE
     }
