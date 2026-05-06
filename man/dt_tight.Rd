@@ -11,6 +11,7 @@ A list of tibbles:
 \item{dt_base}{Baseline strategy}
 \item{dt_loose}{Aggressive strategy}
 \item{dt_positional}{Position-aware strategy}
+\item{dt_neutral_complex}{Baseline model testing strategy}
 \item{example_strategies}{list object of all example strategy tibbles}
 }
 }

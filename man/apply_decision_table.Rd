@@ -2,18 +2,22 @@
 % Please edit documentation in R/apply_decision_table.R
 \name{apply_decision_table}
 \alias{apply_decision_table}
-\title{Apply decision table to simulation data with dropout tracking}
+\title{Apply decision table with stack + pot tracking}
 \usage{
-apply_decision_table(sim_data, dt_focus, dt_rival = NULL)
+apply_decision_table(sim_data, dt_focus, dt_rival = NULL, starting_stack = 100)
 }
 \arguments{
-\item{sim_data}{Output from simulate_many_hands}
+\item{sim_data}{Simulation dataframe}
 
-\item{decision_table}{Tibble of rules}
+\item{dt_focus}{Decision table for focus player}
+
+\item{dt_rival}{Decision table for rival players}
+
+\item{starting_stack}{Starting stack for all players}
 }
 \value{
-sim_data with decisions and remaining player tracking
+Simulation dataframe with betting actions
 }
 \description{
-Apply decision table to simulation data with dropout tracking
+Apply decision table with stack + pot tracking
 }
