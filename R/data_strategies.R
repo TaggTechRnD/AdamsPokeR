@@ -23,6 +23,8 @@
 
 "example_strategies"
 
+"dt_focus_simple"
+
 #' Rival Poker Strategies
 #'
 #' Baseline opponent decision tables for simulation environments.
@@ -32,3 +34,5 @@
 #'   \item{baseline}{Pressure-aware baseline opponent}
 #' }
 "rival_strategies"
+
+"dt_rival_simple"

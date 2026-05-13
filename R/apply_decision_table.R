@@ -1,11 +1,14 @@
-#' Apply decision table with stack + pot tracking
+#' Apply decision tables to simulation data
+#'
+#' Orchestrates bounded two-cycle betting across preflop, flop,
+#' turn, and river using decision-table driven player behavior.
 #'
 #' @param sim_data Simulation dataframe
 #' @param dt_focus Decision table for focus player
 #' @param dt_rival Decision table for rival players
 #' @param starting_stack Starting stack for all players
 #'
-#' @return Simulation dataframe with betting actions
+#' @return Simulation dataframe with betting actions, stacks, pots, and winners
 #' @export
 
 apply_decision_table <- function(
@@ -26,49 +29,16 @@ apply_decision_table <- function(
     "river"
   )
 
-  #### initialise columns ####
+  #### initialise hand economy ####
 
-  sim_data <- sim_data %>%
-    dplyr::mutate(
-
-      active = TRUE,
-
-      stack = starting_stack,
-
-      total_invested = 0,
-
-      pot_size = 0,
-
-      current_bet = 0,
-
-      amount_to_call = 0,
-
-      facing_bet = FALSE,
-
-      decision_preflop = NA_character_,
-      decision_flop    = NA_character_,
-      decision_turn    = NA_character_,
-      decision_river   = NA_character_,
-
-      invest_preflop = 0,
-      invest_flop    = 0,
-      invest_turn    = 0,
-      invest_river   = 0,
-
-      remaining_preflop = NA_integer_,
-      remaining_flop    = NA_integer_,
-      remaining_turn    = NA_integer_,
-      remaining_river   = NA_integer_,
-
-      pot_preflop = 0,
-      pot_flop    = 0,
-      pot_turn    = 0,
-      pot_river   = 0
-    )
-
-  #### loop through simulations ####
+  sim_data <- initialize_hand_state(
+    sim_data = sim_data,
+    starting_stack = starting_stack
+  )
 
   sim_ids <- unique(sim_data$sim_id)
+
+  #### loop through hands ####
 
   for (sid in sim_ids) {
 
@@ -76,51 +46,129 @@ apply_decision_table <- function(
 
     active_players <- rep(TRUE, length(idx))
 
-    pot <- 0
+    pot <- max(
+      sim_data$pot_size[idx],
+      na.rm = TRUE
+    )
 
-    #### blinds ####
-
-    sb_idx <- which(sim_data$small_blind[idx])
-    bb_idx <- which(sim_data$big_blind[idx])
-
-    if (length(sb_idx) == 1) {
-
-      sim_data$stack[idx[sb_idx]] <-
-        sim_data$stack[idx[sb_idx]] - 0.5
-
-      sim_data$total_invested[idx[sb_idx]] <-
-        sim_data$total_invested[idx[sb_idx]] + 0.5
-
-      pot <- pot + 0.5
-    }
-
-    if (length(bb_idx) == 1) {
-
-      sim_data$stack[idx[bb_idx]] <-
-        sim_data$stack[idx[bb_idx]] - 1
-
-      sim_data$total_invested[idx[bb_idx]] <-
-        sim_data$total_invested[idx[bb_idx]] + 1
-
-      pot <- pot + 1
-    }
-
-    #### stage loop ####
+    #### loop through streets ####
 
     for (stage in stages) {
 
-      #### preflop starts with blinds ####
-      #### postflop starts unchecked ####
+      if (sum(active_players) <= 1) {
+        break
+      }
 
-      current_bet <- ifelse(
-        stage == "preflop",
-        1,
-        0
+      #### street setup ####
+
+      if (stage == "preflop") {
+
+        current_bet <- 1
+
+        street_investments <-
+          sim_data$invest_preflop[idx]
+
+      } else {
+
+        current_bet <- 0
+
+        street_investments <- rep(
+          0,
+          length(idx)
+        )
+      }
+
+      #### cycle 1 ####
+
+      cycle1 <- run_betting_cycle(
+
+        sim_data = sim_data,
+
+        idx = idx,
+
+        active_players = active_players,
+
+        dt_focus = dt_focus,
+        dt_rival = dt_rival,
+
+        stage = stage,
+        cycle = 1,
+
+        current_bet = current_bet,
+        pot = pot,
+
+        street_investments =
+          street_investments
       )
 
-      for (j in seq_along(idx)) {
+      sim_data <- cycle1$sim_data
 
-        #### skip folded players ####
+      active_players <- cycle1$active_players
+
+      current_bet <- cycle1$current_bet
+
+      pot <- cycle1$pot
+
+      street_investments <-
+        cycle1$street_investments
+
+      #### cycle 2 only if betting reopened ####
+
+      if (
+        cycle1$raise_occurred &&
+        sum(active_players) > 1
+      ) {
+
+        cycle2 <- run_betting_cycle(
+
+          sim_data = sim_data,
+
+          idx = idx,
+
+          active_players = active_players,
+
+          dt_focus = dt_focus,
+          dt_rival = dt_rival,
+
+          stage = stage,
+          cycle = 2,
+
+          current_bet = current_bet,
+          pot = pot,
+
+          street_investments =
+            street_investments
+        )
+
+        sim_data <- cycle2$sim_data
+
+        active_players <- cycle2$active_players
+
+        current_bet <- cycle2$current_bet
+
+        pot <- cycle2$pot
+
+        street_investments <-
+          cycle2$street_investments
+      }
+
+      #### close street ####
+
+      sim_data[[paste0(
+        "pot_",
+        stage
+      )]][idx] <- pot
+
+      sim_data$pot_size[idx] <- pot
+
+      sim_data[[paste0(
+        "remaining_",
+        stage
+      )]][idx] <- sum(active_players)
+
+      #### mark inactive players as folded on later streets ####
+
+      for (j in seq_along(idx)) {
 
         if (!active_players[j]) {
 
@@ -128,244 +176,13 @@ apply_decision_table <- function(
             "decision_",
             stage
           )]][idx[j]] <- "fold"
-
-          next
         }
-
-        #### current row ####
-
-        row <- sim_data[idx[j], ]
-
-        #### choose correct rank ####
-
-        rank_value <- switch(
-          stage,
-          preflop = row$preflop_value,
-          flop    = row$flop_rank,
-          turn    = row$turn_rank,
-          river   = row$river_rank
-        )
-
-        #### select strategy ####
-
-        player_id <- row$player
-
-        if (player_id == 1) {
-
-          dt <- dt_focus
-
-        } else {
-
-          dt <- dt_rival
-        }
-
-        #### filter stage ####
-
-        dt_stage <- dt %>%
-          dplyr::filter(street == stage)
-
-        #### betting state ####
-
-        facing_bet <- current_bet > 0
-
-        amount_to_call <- max(
-          current_bet,
-          0
-        )
-
-        #### find matching rule ####
-
-        matched_rule <- NULL
-
-        for (r in seq_len(nrow(dt_stage))) {
-
-          rr <- dt_stage[r, ]
-
-          #### rank matching ####
-
-          rank_match <-
-            rank_value >= rr$min_rank &
-            rank_value <= rr$max_rank
-
-          #### wildcard-aware matching ####
-
-          pp_match <-
-            is.na(rr$pocket_pair) |
-            row$pocket_pair == rr$pocket_pair
-
-          ps_match <-
-            is.na(rr$pocket_suited) |
-            row$pocket_suited == rr$pocket_suited
-
-          ffd_match <-
-            is.na(rr$flop_flush_draw) |
-            row$flop_flush_draw == rr$flop_flush_draw
-
-          fsd_match <-
-            is.na(rr$flop_straight_draw) |
-            row$flop_straight_draw == rr$flop_straight_draw
-
-          tfd_match <-
-            is.na(rr$turn_flush_draw) |
-            row$turn_flush_draw == rr$turn_flush_draw
-
-          tsd_match <-
-            is.na(rr$turn_straight_draw) |
-            row$turn_straight_draw == rr$turn_straight_draw
-
-          #### rule match ####
-
-          if (
-            rank_match &
-            pp_match &
-            ps_match &
-            ffd_match &
-            fsd_match &
-            tfd_match &
-            tsd_match
-          ) {
-
-            matched_rule <- rr
-
-            break
-          }
-        }
-
-        #### fallback ####
-
-        if (is.null(matched_rule)) {
-
-          decision <- ifelse(
-            facing_bet,
-            "fold",
-            "check"
-          )
-
-          invest <- 0
-
-        } else {
-
-          decision <- matched_rule$action
-
-          #### sizing ####
-
-          if (
-            matched_rule$sizing_type ==
-            "stack_pct"
-          ) {
-
-            invest <-
-              row$stack *
-              matched_rule$sizing_value
-
-          } else if (
-            matched_rule$sizing_type ==
-            "pot_pct"
-          ) {
-
-            invest <-
-              pot *
-              matched_rule$sizing_value
-
-          } else {
-
-            invest <- 0
-          }
-        }
-
-        #### apply action ####
-
-        if (
-          decision == "fold" &&
-          sum(active_players) > 1
-        ) {
-
-          active_players[j] <- FALSE
-
-          invest <- 0
-        }
-
-        #### cannot fold last player ####
-
-        if (
-          decision == "fold" &&
-          sum(active_players) == 1
-        ) {
-
-          decision <- "check"
-        }
-
-        #### calls/checks ####
-
-        if (decision %in% c("call", "check")) {
-
-          invest <- amount_to_call
-        }
-
-        #### bets/raises ####
-
-        if (decision %in% c("bet", "raise")) {
-
-          current_bet <- max(
-            current_bet,
-            invest
-          )
-        }
-
-        #### stack cap ####
-
-        invest <- min(
-          invest,
-          row$stack
-        )
-
-        #### update state ####
-
-        sim_data$stack[idx[j]] <-
-          sim_data$stack[idx[j]] - invest
-
-        sim_data$total_invested[idx[j]] <-
-          sim_data$total_invested[idx[j]] + invest
-
-        pot <- pot + invest
-
-        #### save outputs ####
-
-        sim_data[[paste0(
-          "decision_",
-          stage
-        )]][idx[j]] <- decision
-
-        sim_data[[paste0(
-          "invest_",
-          stage
-        )]][idx[j]] <- invest
-
-        sim_data[[paste0(
-          "remaining_",
-          stage
-        )]][idx[j]] <- sum(active_players)
-
-        sim_data[[paste0(
-          "pot_",
-          stage
-        )]][idx[j]] <- pot
-
-        sim_data$pot_size[idx[j]] <- pot
-      }
-
-      #### if one player remains ####
-
-      if (sum(active_players) == 1) {
-        break
       }
     }
 
     #### resolve winner ####
 
     remaining_idx <- idx[active_players]
-
-    #### emergency fallback ####
 
     if (length(remaining_idx) == 0) {
 
@@ -402,6 +219,8 @@ apply_decision_table <- function(
 
     sim_data$stack[winner_idx] <-
       sim_data$stack[winner_idx] + pot
+
+    sim_data$pot_size[idx] <- pot
   }
 
   sim_data

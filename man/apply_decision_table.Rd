@@ -2,7 +2,7 @@
 % Please edit documentation in R/apply_decision_table.R
 \name{apply_decision_table}
 \alias{apply_decision_table}
-\title{Apply decision table with stack + pot tracking}
+\title{Apply decision tables to simulation data}
 \usage{
 apply_decision_table(sim_data, dt_focus, dt_rival = NULL, starting_stack = 100)
 }
@@ -16,8 +16,9 @@ apply_decision_table(sim_data, dt_focus, dt_rival = NULL, starting_stack = 100)
 \item{starting_stack}{Starting stack for all players}
 }
 \value{
-Simulation dataframe with betting actions
+Simulation dataframe with betting actions, stacks, pots, and winners
 }
 \description{
-Apply decision table with stack + pot tracking
+Orchestrates bounded two-cycle betting across preflop, flop,
+turn, and river using decision-table driven player behavior.
 }
