@@ -28,13 +28,9 @@ evaluate_dt_action <- function(
   rank_value <- switch(
 
     stage,
-
     preflop = row$preflop_value,
-
     flop = row$flop_rank,
-
     turn = row$turn_rank,
-
     river = row$river_rank
   )
 
@@ -52,9 +48,7 @@ evaluate_dt_action <- function(
   #### default outputs ####
 
   matched_rule <- NULL
-
   decision <- NA_character_
-
   invest <- 0
 
   #### search DT ####
@@ -66,9 +60,7 @@ evaluate_dt_action <- function(
     #### rank matching ####
 
     rank_match <-
-
       rank_value >= rr$min_rank &
-
       rank_value <= rr$max_rank
 
     #### wildcard-aware matching ####
@@ -125,19 +117,12 @@ evaluate_dt_action <- function(
     if (
 
       rank_match &
-
       pp_match &
-
       ps_match &
-
       ffd_match &
-
       fsd_match &
-
       tfd_match &
-
       tsd_match &
-
       cycle_match
 
     ) {
@@ -230,9 +215,7 @@ evaluate_dt_action <- function(
   return(list(
 
     action = decision,
-
     invest = invest,
-
     matched_rule = matched_rule
 
   ))

@@ -7,19 +7,24 @@ test_that("evaluate_dt_action returns valid structure", {
   sim <- simulate_many_hands(
     n_sim = 1,
     n_players = 6
-  )
+  ) %>%
+
+    assign_positions() %>%
+
+    assign_player_types() %>%
+
+    add_hand_context() %>%
+
+    initialize_hand_state()
 
   row <- sim %>%
-    assign_positions() %>%
-    assign_player_types() %>%
-    add_hand_context() %>%
     dplyr::slice(1)
 
   out <- evaluate_dt_action(
 
     row = row,
 
-    dt = dt_neutral_complex,
+    dt = dt_focus_simple,
 
     stage = "preflop",
 
@@ -32,15 +37,15 @@ test_that("evaluate_dt_action returns valid structure", {
 
   expect_true(is.list(out))
 
-  expect_true(
-    all(
-      c(
-        "action",
-        "invest",
-        "matched_rule"
-      ) %in% names(out)
-    )
-  )
+  expect_true(all(
+
+    c(
+      "action",
+      "invest",
+      "matched_rule"
+    ) %in% names(out)
+
+  ))
 })
 
 
@@ -50,19 +55,24 @@ test_that("evaluate_dt_action returns valid action", {
   sim <- simulate_many_hands(
     n_sim = 1,
     n_players = 6
-  )
+  ) %>%
+
+    assign_positions() %>%
+
+    assign_player_types() %>%
+
+    add_hand_context() %>%
+
+    initialize_hand_state()
 
   row <- sim %>%
-    assign_positions() %>%
-    assign_player_types() %>%
-    add_hand_context() %>%
     dplyr::slice(1)
 
   out <- evaluate_dt_action(
 
     row = row,
 
-    dt = dt_neutral_complex,
+    dt = dt_focus_simple,
 
     stage = "preflop",
 
@@ -94,19 +104,24 @@ test_that("evaluate_dt_action returns non-negative investment", {
   sim <- simulate_many_hands(
     n_sim = 1,
     n_players = 6
-  )
+  ) %>%
+
+    assign_positions() %>%
+
+    assign_player_types() %>%
+
+    add_hand_context() %>%
+
+    initialize_hand_state()
 
   row <- sim %>%
-    assign_positions() %>%
-    assign_player_types() %>%
-    add_hand_context() %>%
     dplyr::slice(1)
 
   out <- evaluate_dt_action(
 
     row = row,
 
-    dt = dt_neutral_complex,
+    dt = dt_focus_simple,
 
     stage = "preflop",
 
@@ -136,8 +151,12 @@ test_that("run_betting_cycle returns valid structure", {
   ) %>%
 
     assign_positions() %>%
+
     assign_player_types() %>%
-    add_hand_context()
+
+    add_hand_context() %>%
+
+    initialize_hand_state()
 
   idx <- which(sim$sim_id == 1)
 
@@ -149,9 +168,9 @@ test_that("run_betting_cycle returns valid structure", {
 
     active_players = rep(TRUE, 6),
 
-    dt_focus = dt_neutral_complex,
+    dt_focus = dt_focus_simple,
 
-    dt_rival = dt_neutral_complex,
+    dt_rival = dt_rival_simple,
 
     stage = "preflop",
 
@@ -161,30 +180,23 @@ test_that("run_betting_cycle returns valid structure", {
 
     pot = 1.5,
 
-    street_investments = c(
-      0,
-      0,
-      0,
-      0,
-      0.5,
-      1
-    )
+    street_investments = rep(0, 6)
   )
 
   expect_true(is.list(out))
 
-  expect_true(
-    all(
-      c(
-        "sim_data",
-        "active_players",
-        "current_bet",
-        "pot",
-        "street_investments",
-        "raise_occurred"
-      ) %in% names(out)
-    )
-  )
+  expect_true(all(
+
+    c(
+      "sim_data",
+      "active_players",
+      "current_bet",
+      "pot",
+      "street_investments",
+      "raise_occurred"
+    ) %in% names(out)
+
+  ))
 })
 
 
@@ -197,12 +209,14 @@ test_that("run_betting_cycle preserves stack conservation", {
   ) %>%
 
     assign_positions() %>%
+
     assign_player_types() %>%
-    add_hand_context()
+
+    add_hand_context() %>%
+
+    initialize_hand_state()
 
   idx <- which(sim$sim_id == 1)
-
-  sim$stack <- 100
 
   out <- run_betting_cycle(
 
@@ -212,9 +226,9 @@ test_that("run_betting_cycle preserves stack conservation", {
 
     active_players = rep(TRUE, 6),
 
-    dt_focus = dt_neutral_complex,
+    dt_focus = dt_focus_simple,
 
-    dt_rival = dt_neutral_complex,
+    dt_rival = dt_rival_simple,
 
     stage = "preflop",
 
@@ -224,28 +238,17 @@ test_that("run_betting_cycle preserves stack conservation", {
 
     pot = 1.5,
 
-    street_investments = c(
-      0,
-      0,
-      0,
-      0,
-      0.5,
-      1
-    )
+    street_investments = rep(0, 6)
   )
 
-  total_stack <- sum(
-    out$sim_data$stack[idx]
-  )
+  total_stack <- sum(out$sim_data$stack[idx])
 
   total_pot <- out$pot
 
   expect_true(
 
     abs(
-      total_stack +
-        total_pot -
-        (6 * 100 + 1.5)
+      total_stack + total_pot - (6 * 100)
     ) < 1e-6
 
   )
@@ -261,12 +264,14 @@ test_that("run_betting_cycle updates pot correctly", {
   ) %>%
 
     assign_positions() %>%
+
     assign_player_types() %>%
-    add_hand_context()
+
+    add_hand_context() %>%
+
+    initialize_hand_state()
 
   idx <- which(sim$sim_id == 1)
-
-  sim$stack <- 100
 
   out <- run_betting_cycle(
 
@@ -276,9 +281,9 @@ test_that("run_betting_cycle updates pot correctly", {
 
     active_players = rep(TRUE, 6),
 
-    dt_focus = dt_neutral_complex,
+    dt_focus = dt_focus_simple,
 
-    dt_rival = dt_neutral_complex,
+    dt_rival = dt_rival_simple,
 
     stage = "preflop",
 
@@ -288,14 +293,7 @@ test_that("run_betting_cycle updates pot correctly", {
 
     pot = 1.5,
 
-    street_investments = c(
-      0,
-      0,
-      0,
-      0,
-      0.5,
-      1
-    )
+    street_investments = rep(0, 6)
   )
 
   expect_true(
@@ -313,8 +311,12 @@ test_that("run_betting_cycle returns logical active_players", {
   ) %>%
 
     assign_positions() %>%
+
     assign_player_types() %>%
-    add_hand_context()
+
+    add_hand_context() %>%
+
+    initialize_hand_state()
 
   idx <- which(sim$sim_id == 1)
 
@@ -326,9 +328,9 @@ test_that("run_betting_cycle returns logical active_players", {
 
     active_players = rep(TRUE, 6),
 
-    dt_focus = dt_neutral_complex,
+    dt_focus = dt_focus_simple,
 
-    dt_rival = dt_neutral_complex,
+    dt_rival = dt_rival_simple,
 
     stage = "preflop",
 
@@ -338,14 +340,7 @@ test_that("run_betting_cycle returns logical active_players", {
 
     pot = 1.5,
 
-    street_investments = c(
-      0,
-      0,
-      0,
-      0,
-      0.5,
-      1
-    )
+    street_investments = rep(0, 6)
   )
 
   expect_true(

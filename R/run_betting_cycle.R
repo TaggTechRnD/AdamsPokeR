@@ -41,11 +41,23 @@ run_betting_cycle <- function(
 
 ) {
 
+  #### ======================================== ####
+  #### INITIAL ECONOMY SNAPSHOT
+  #### ======================================== ####
+
+  initial_total_chips <-
+
+    sum(sim_data$stack[idx]) +
+
+    pot
+
   #### track whether aggression occurred ####
 
   raise_occurred <- FALSE
 
-  #### action order ####
+  #### ======================================== ####
+  #### ACTION ORDER
+  #### ======================================== ####
 
   for (j in seq_along(idx)) {
 
@@ -95,16 +107,22 @@ run_betting_cycle <- function(
 
     row$cycle <- cycle
 
-    #### get DT action ####
+    #### ======================================== ####
+    #### GET DT ACTION
+    #### ======================================== ####
 
     action_out <- evaluate_dt_action(
 
       row = row,
+
       dt = dt,
+
       stage = stage,
 
       current_bet = current_bet,
+
       pot = pot,
+
       cycle = cycle
     )
 
@@ -112,9 +130,9 @@ run_betting_cycle <- function(
 
     invest <- action_out$invest
 
-    #### ============================ ####
-    #### enforce legal betting logic ####
-    #### ============================ ####
+    #### ======================================== ####
+    #### LEGALITY ENFORCEMENT
+    #### ======================================== ####
 
     #### cannot check facing a bet ####
 
@@ -129,14 +147,14 @@ run_betting_cycle <- function(
       decision <- "fold"
     }
 
-    #### convert calls to exact amount ####
+    #### calls always match exactly ####
 
     if (decision == "call") {
 
       invest <- amount_to_call
     }
 
-    #### checks invest zero ####
+    #### checks invest nothing ####
 
     if (decision == "check") {
 
@@ -173,7 +191,9 @@ run_betting_cycle <- function(
       invest <- 0
     }
 
-    #### bets / raises ####
+    #### ======================================== ####
+    #### BET / RAISE LOGIC
+    #### ======================================== ####
 
     if (
 
@@ -185,12 +205,12 @@ run_betting_cycle <- function(
 
     ) {
 
-      #### minimum raise safeguard ####
-
       proposed_total <-
 
         street_investments[j] +
         invest
+
+      #### minimum raise safeguard ####
 
       if (
 
@@ -204,14 +224,14 @@ run_betting_cycle <- function(
           max(1, invest)
       }
 
-      #### true raise size ####
+      #### true raise amount ####
 
       invest <-
 
         proposed_total -
         street_investments[j]
 
-      #### update current bet ####
+      #### update table bet ####
 
       current_bet <-
 
@@ -221,14 +241,20 @@ run_betting_cycle <- function(
       raise_occurred <- TRUE
     }
 
-    #### stack cap ####
+    #### ======================================== ####
+    #### STACK CAP
+    #### ======================================== ####
 
     invest <- min(
+
       invest,
+
       sim_data$stack[idx[j]]
     )
 
-    #### apply economy updates ####
+    #### ======================================== ####
+    #### APPLY ECONOMY
+    #### ======================================== ####
 
     sim_data$stack[idx[j]] <-
 
@@ -240,7 +266,7 @@ run_betting_cycle <- function(
       sim_data$total_invested[idx[j]] +
       invest
 
-    #### update street contribution ####
+    #### street contribution ####
 
     street_investments[j] <-
 
@@ -251,16 +277,14 @@ run_betting_cycle <- function(
 
     pot <- pot + invest
 
-    #### ============================ ####
-    #### save outputs ####
-    #### ============================ ####
+    #### ======================================== ####
+    #### SAVE OUTPUTS
+    #### ======================================== ####
 
     sim_data[[paste0(
       "decision_",
       stage
     )]][idx[j]] <- decision
-
-    #### cumulative street investment ####
 
     sim_data[[paste0(
       "invest_",
@@ -284,7 +308,45 @@ run_betting_cycle <- function(
     sim_data$pot_size[idx[j]] <- pot
   }
 
-  #### return updated state ####
+  #### ======================================== ####
+  #### FINAL ECONOMY VALIDATION
+  #### ======================================== ####
+
+  final_total_chips <-
+
+    sum(sim_data$stack[idx]) +
+
+    pot
+
+  #### hard safeguard ####
+
+  if (
+
+    abs(
+      initial_total_chips -
+      final_total_chips
+    ) > 1e-6
+
+  ) {
+
+    warning(
+
+      paste0(
+
+        "Chip conservation violated in run_betting_cycle(): ",
+
+        "initial = ",
+        initial_total_chips,
+
+        ", final = ",
+        final_total_chips
+      )
+    )
+  }
+
+  #### ======================================== ####
+  #### RETURN UPDATED STATE
+  #### ======================================== ####
 
   return(list(
 
