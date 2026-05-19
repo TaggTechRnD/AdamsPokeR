@@ -1,138 +1,188 @@
-compare_strategies <- function(sim, strategy_list) {
+compare_strategies <- function(
+    sim,
+    strategy_list,
+    rival_dt = dt_rival_simple,
+    return_full_results = FALSE
 
+) {
   strategy_names <- names(strategy_list)
   n_strat <- length(strategy_names)
-
   results <- vector("list", n_strat)
-
+  full_results <- vector("list", n_strat)
   start_time <- Sys.time()
 
   for (i in seq_along(strategy_names)) {
 
-    name <- strategy_names[i]
-
-    # 🔥 KEY CHANGE: separate focus vs rivals
-    dt_focus <- strategy_list[[name]]
-    dt_rival <- rival_strategies[["baseline"]]
-
-    cat("\n----------------------------------------\n")
-    cat("Running strategy", i, "of", n_strat, ":", name, "\n")
-
+    strategy_name <- strategy_names[i]
+    dt_focus <- strategy_list[[strategy_name]]
+    cat("\n----------------------------------\n")
+    cat("Running strategy", i, "of", n_strat, "\n")
+    cat("Strategy:", strategy_name, "\n")
+    cat("----------------------------------\n")
     iter_start <- Sys.time()
+
+    #### run simulation ####
 
     res <- sim %>%
       assign_positions() %>%
       assign_player_types() %>%
-      add_type_modifiers() %>%
+      add_hand_context() %>%
+      initialize_hand_state() %>%
+      apply_decision_table(
+        dt_focus = dt_focus,
+        dt_rival = rival_dt
 
-      # 🔥 PASS 1
-      apply_decision_table(dt_focus, dt_rival) %>%
-
-      add_adjusted_metrics() %>%
-      compute_investment() %>%
-      add_adjusted_metrics() %>%
-
-      # 🔥 PASS 2
-      apply_decision_table(dt_focus, dt_rival) %>%
-      compute_investment() %>%
-
-      classify_outcomes() %>%
-      calculate_ev()
-
-    # -----------------------------------
-    # BEST HAND BUT FOLDED (FIXED)
-    # -----------------------------------
-    best_hand_folded <- res %>%
-      dplyr::group_by(sim_id) %>%
-      dplyr::mutate(
-        best_value = max(sapply(final_eval, function(x) x$rank_value))
-      ) %>%
-      dplyr::ungroup() %>%
-      dplyr::filter(is_focus) %>%
-      dplyr::mutate(
-        my_value = sapply(final_eval, function(x) x$rank_value),
-        best_in_hand = my_value == best_value
-      ) %>%
-      dplyr::summarise(
-        best_hand_folded = sum(best_in_hand & final_action == "fold", na.rm = TRUE)
       )
 
-    # -----------------------------------
-    # FOLD FORCES (FIXED)
-    # -----------------------------------
-    fold_forces <- res %>%
-      dplyr::filter(!is_focus) %>%
+    #### focus player only ####
+
+    focus_res <- res %>%
+      dplyr::filter(is_focus)
+
+    #### core metrics ####
+
+    summary_tbl <- focus_res %>%
       dplyr::summarise(
-        fold_forces = sum(
-          decision_flop == "fold" & betlevel_flop > 1 |
-            decision_turn == "fold" & betlevel_turn > 1 |
-            decision_river == "fold" & betlevel_river > 1,
-          na.rm = TRUE
+        strategy = strategy_name,
+        n_hands = dplyr::n(),
+        mean_stack = mean(stack, na.rm = TRUE),
+        mean_invested = mean(total_invested, na.rm = TRUE),
+        mean_profit = mean(stack - 100, na.rm = TRUE),
+        total_profit =sum(stack - 100, na.rm = TRUE),
+        bb_per_100 = mean((stack - 100) / 1, na.rm = TRUE) * 100,
+        win_rate = mean(winner, na.rm = TRUE),
+        showdown_rate =
+          mean(
+            remaining_river > 1,
+            na.rm = TRUE
+          ),
+        preflop_fold_rate =
+          mean(
+            decision_preflop == "fold",
+            na.rm = TRUE
+          ),
+        flop_fold_rate =
+          mean(
+            decision_flop == "fold",
+            na.rm = TRUE
+          ),
+        turn_fold_rate =
+          mean(
+            decision_turn == "fold",
+            na.rm = TRUE
+          ),
+        river_fold_rate =
+          mean(
+            decision_river == "fold",
+            na.rm = TRUE
+          ),
+        aggression_rate =
+          mean(
+            decision_preflop %in% c("bet", "raise") |
+              decision_flop %in% c("bet", "raise") |
+              decision_turn %in% c("bet", "raise") |
+              decision_river %in% c("bet", "raise"),
+            na.rm = TRUE
+
+          ),
+
+        mean_final_pot =
+          mean(pot_size, na.rm = TRUE),
+
+        max_final_pot =
+          max(pot_size, na.rm = TRUE)
+
+      )
+
+    #### positional summary ####
+
+    position_tbl <- res %>%
+
+      dplyr::group_by(position) %>%
+
+      dplyr::summarise(
+        mean_stack = mean(stack, na.rm = TRUE),
+        mean_profit = mean(stack - 100, na.rm = TRUE),
+        win_rate = mean(winner, na.rm = TRUE),
+        .groups = "drop"
+
+      )
+
+    #### diagnostics ####
+
+    diagnostics_tbl <- res %>%
+      dplyr::group_by(sim_id) %>%
+      dplyr::summarise(
+        total_stack = sum(stack, na.rm = TRUE),
+        total_invested = sum(total_invested, na.rm = TRUE),
+        final_pot = max(pot_size, na.rm = TRUE),
+        n_winners =  sum(winner, na.rm = TRUE),
+        .groups = "drop"
+
+      ) %>%
+
+      dplyr::mutate(
+        stack_error = abs(total_stack - 100 * max(res$n_players)),
+        pot_error = abs(final_pot - total_invested)
+
+      )
+
+    #### failed hands ####
+
+    failed_hands <- diagnostics_tbl %>%
+      dplyr::filter(
+        stack_error > 1e-6 |
+          pot_error > 1e-6 |
+          n_winners != 1
+      )
+
+    #### combine ####
+
+    summary_tbl$n_failed_hands <- nrow(failed_hands)
+
+    summary_tbl$runtime_seconds <-
+      as.numeric(
+        difftime(
+          Sys.time(),
+          iter_start,
+          units = "secs"
         )
       )
 
-    # -----------------------------------
-    # CORE SUMMARY
-    # -----------------------------------
-    summary <- summarise_ev(res)
+    results[[i]] <- list(
+      summary = summary_tbl,
+      positions = position_tbl,
+      diagnostics = diagnostics_tbl
+    )
 
-    # -----------------------------------
-    # WIN TYPE COUNTS
-    # -----------------------------------
-    win_counts <- res %>%
-      dplyr::filter(is_focus) %>%
-      dplyr::count(win_type) %>%
-      tidyr::complete(win_type, fill = list(n = 0)) %>%
-      tidyr::pivot_wider(
-        names_from = win_type,
-        values_from = n,
-        values_fill = 0
-      )
+    if (return_full_results) {
 
-    # -----------------------------------
-    # DIAGNOSTICS
-    # -----------------------------------
-    diagnostics <- res %>%
-      dplyr::filter(is_focus) %>%
-      dplyr::summarise(
+      full_results[[i]] <- res
+    }
 
-        showdown_rate = mean(win_type == "showdown_win"),
-        fold_rate     = mean(grepl("fold_win", win_type)),
-
-        fold_preflop_rate = mean(win_type == "fold_win_preflop"),
-        fold_flop_rate    = mean(win_type == "fold_win_flop"),
-        fold_turn_rate    = mean(win_type == "fold_win_turn"),
-        fold_river_rate   = mean(win_type == "fold_win_river"),
-
-        avg_invested = mean(invested, na.rm = TRUE),
-        avg_loss     = mean(ev[ev < 0], na.rm = TRUE),
-        avg_win      = mean(ev[ev > 0], na.rm = TRUE),
-
-        loss_rate = mean(win_type == "loss")
-      )
-
-    # -----------------------------------
-    # COMBINE
-    # -----------------------------------
-    summary <- summary %>%
-      dplyr::bind_cols(win_counts) %>%
-      dplyr::bind_cols(diagnostics) %>%
-      dplyr::bind_cols(best_hand_folded) %>%
-      dplyr::bind_cols(fold_forces)
-
-    summary$strategy <- name
-
-    results[[i]] <- summary
-
-    iter_time <- Sys.time() - iter_start
-    total_time <- Sys.time() - start_time
-
-    cat("Completed:", name, "\n")
-    cat("Iteration start time:", as.character(Sys.time()), "\n")
+    cat("Completed:", strategy_name, "\n")
+    cat("Runtime:", round(summary_tbl$runtime_seconds, 2), "seconds\n"
+    )
   }
 
-  cat("\nAll strategies complete at.", as.character(Sys.time()), "\n")
+  #### bind summaries ####
 
-  dplyr::bind_rows(results) %>%
-    dplyr::select(strategy, dplyr::everything())
+  final_summary <- dplyr::bind_rows(
+    lapply(results, function(x) x$summary)
+  )
+
+  #### return ####
+
+  if (return_full_results) {
+    return(list(
+      summary = final_summary,
+      details = results,
+      raw_results = full_results
+    ))
+  }
+
+  return(list(
+    summary = final_summary,
+    details = results
+  ))
 }
